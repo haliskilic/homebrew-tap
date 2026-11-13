@@ -50,9 +50,15 @@ jobs:
           TAP: ${{ steps.brew.outputs.tap-name }}
         run: brew test --verbose "$TAP/ser2netweb"
       - name: The virtual environment's packages agree (pip check)
+        # (Homebrew's virtual environment carries wheel, a build tool, without its own
+        # dependency packaging: not something ser2netweb runs, so that line is let through)
         run: |
           python=$(brew --prefix python@3.14)/bin/python3.14
-          "$python" -m pip --python "$(brew --prefix ser2netweb)/libexec/bin/python" check
+          out=$("$python" -m pip --python "$(brew --prefix ser2netweb)/libexec/bin/python" check) || true
+          echo "$out"
+          bad=$(echo "$out" | grep -v -e '^No broken requirements found' \
+                  -e '^wheel [0-9.]* requires packaging, which is not installed\.$' || true)
+          [ -z "$bad" ] || { echo "::error::pip check: $bad"; exit 1; }
       - name: brew audit --strict --online
         env:
           TAP: ${{ steps.brew.outputs.tap-name }}
