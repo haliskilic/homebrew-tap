@@ -41,8 +41,10 @@ jobs:
           TAP: ${{ steps.brew.outputs.tap-name }}
         run: brew style "$TAP"
       - name: Build it from source
-        working-directory: ${{ steps.brew.outputs.repository-path }}
-        run: brew install --build-from-source --verbose ./Formula/ser2netweb.rb
+        env:
+          TAP: ${{ steps.brew.outputs.tap-name }}
+        # (by its tap name: Homebrew no longer installs from a path)
+        run: brew install --build-from-source --verbose "$TAP/ser2netweb"
       - name: brew test
         env:
           TAP: ${{ steps.brew.outputs.tap-name }}
