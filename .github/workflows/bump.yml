@@ -1,0 +1,97 @@
+name: bump
+
+# Daily (and by hand): when haliskilic/ser2netweb has a newer release than
+# Formula/ser2netweb.rb, the formula is made again for it by that release's own
+# packaging/homebrew/make_formula.py (the tag's tarball and sha256, and the Python packages
+# its requirements pin, from PyPI) and proposed as a pull request on a branch
+# bump-ser2netweb-vX.Y.Z, with this repository's GITHUB_TOKEN. Such a pull request starts no
+# workflow by itself, so this one starts "brew test" on the branch; its result shows on the
+# pull request. Merge it once that passed.
+# Needs: Settings -> Actions -> General -> Workflow permissions -> "Allow GitHub Actions to
+# create and approve pull requests". GitHub turns scheduled workflows off after 60 days
+# without activity in the repository: Actions -> bump -> "Enable workflow".
+on:
+  schedule:
+    - cron: "41 5 * * *"     # 05:41 UTC
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to make the formula for (vX.Y.Z; empty = the latest)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: make the formula for the latest ser2netweb release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write        # push the branch
+      pull-requests: write   # open its pull request
+      actions: write         # start "brew test" on it
+    env:
+      UPSTREAM: haliskilic/ser2netweb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - id: release
+        name: Is there a newer release?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.tag }}
+        run: |
+          tag=${WANTED:-$(gh release view -R "$UPSTREAM" --json tagName --jq .tagName)}  # never a pre-release
+          if ! printf '%s' "$tag" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::$tag is not a release tag (vX.Y.Z)"; exit 1
+          fi
+          current=$(sed -n 's|^  url "https://github.com/haliskilic/ser2netweb/archive/refs/tags/\(v[^"]*\)\.tar\.gz"$|\1|p' Formula/ser2netweb.rb)
+          branch=bump-ser2netweb-$tag
+          bump=true
+          if [ "$tag" = "$current" ]; then
+            echo "::notice::Formula/ser2netweb.rb is $current, the latest release: nothing to do"
+            bump=false
+          elif git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "::notice::$branch exists already (its pull request is open or was closed)"
+            bump=false
+          fi
+          { echo "tag=$tag"; echo "branch=$branch"; echo "bump=$bump"; } >> "$GITHUB_OUTPUT"
+      - name: Make the formula with the release's make_formula.py
+        if: steps.release.outputs.bump == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          tool="$RUNNER_TEMP/make_formula"
+          mkdir -p "$tool"
+          base="https://raw.githubusercontent.com/$UPSTREAM"
+          # (a release older than the script: main's)
+          if ! curl -fsSL --retry 3 -o "$tool/make_formula.py" "$base/$TAG/packaging/homebrew/make_formula.py"; then
+            echo "::warning::$TAG has no packaging/homebrew/make_formula.py: main's is used"
+            curl -fsSL --retry 3 -o "$tool/make_formula.py" "$base/main/packaging/homebrew/make_formula.py"
+          fi
+          python3 -I "$tool/make_formula.py" "$TAG" --output Formula/ser2netweb.rb
+          git diff --stat
+      - name: Push the branch, open the pull request, start "brew test" on it
+        if: steps.release.outputs.bump == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add Formula/ser2netweb.rb
+          git commit -m "ser2netweb ${TAG#v}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          gh pr create -R "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            --title "ser2netweb ${TAG#v}" \
+            --body "Formula/ser2netweb.rb for [$TAG](https://github.com/$UPSTREAM/releases/tag/$TAG), made by its packaging/homebrew/make_formula.py (workflow \"bump\"). The workflow \"brew test\" runs on this branch; merge once it passed."
+          gh workflow run tests.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"

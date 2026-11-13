@@ -1,0 +1,71 @@
+name: brew test
+
+# Formula/ser2netweb.rb as Homebrew users get it, on macOS and Linux: built from source
+# (every Python package from its sdist), its own test (--version, --about, /healthz), the
+# virtual environment's dependencies checked against each other (pip check), brew audit
+# --strict --online and brew style; on macOS also a start as a service (brew services).
+# Runs on pushes to main and on pull requests; the workflow "bump" starts it on its branch
+# (a pull request opened with the GITHUB_TOKEN starts no workflow by itself).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brew-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: brew install, test, audit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      # puts this commit of the repository where Homebrew keeps the tap haliskilic/tap
+      # (and trusts it); no separate checkout
+      - name: Set up Homebrew with this tap
+        id: brew
+        uses: Homebrew/actions/setup-homebrew@c262868c096d909fc278daa87ed9772967331ea3  # 2026.11.02.1
+      - name: brew style
+        env:
+          TAP: ${{ steps.brew.outputs.tap-name }}
+        run: brew style "$TAP"
+      - name: Build it from source
+        working-directory: ${{ steps.brew.outputs.repository-path }}
+        run: brew install --build-from-source --verbose ./Formula/ser2netweb.rb
+      - name: brew test
+        env:
+          TAP: ${{ steps.brew.outputs.tap-name }}
+        run: brew test --verbose "$TAP/ser2netweb"
+      - name: The virtual environment's packages agree (pip check)
+        run: |
+          python=$(brew --prefix python@3.14)/bin/python3.14
+          "$python" -m pip --python "$(brew --prefix ser2netweb)/libexec/bin/python" check
+      - name: brew audit --strict --online
+        env:
+          TAP: ${{ steps.brew.outputs.tap-name }}
+        run: brew audit --strict --online --formula "$TAP/ser2netweb"
+      - name: Starts as a service (brew services, launchd)
+        if: runner.os == 'macOS'
+        run: |
+          brew services start ser2netweb
+          ok=
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthz; then ok=1; break; fi
+            sleep 2
+          done
+          brew services info ser2netweb || true
+          tail -n 40 "$(brew --prefix)/var/log/ser2netweb.log" || true
+          tail -n 40 "$(brew --prefix)/var/ser2netweb/all.log" || true
+          brew services stop ser2netweb
+          [ -n "$ok" ] || { echo "::error::the service didn't answer on /healthz"; exit 1; }

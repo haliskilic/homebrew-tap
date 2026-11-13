@@ -1,0 +1,10 @@
+# The actions of the workflows (pinned by commit SHA, with the version as a comment); a new
+# release is proposed once it is a week old
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
