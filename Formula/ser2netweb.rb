@@ -1,11 +1,11 @@
-# Made by packaging/homebrew/make_formula.py of haliskilic/ser2netweb (v3.1.0); change it there.
+# Made by packaging/homebrew/make_formula.py of haliskilic/ser2netweb (v3.1.1); change it there.
 class Ser2netweb < Formula
   include Language::Python::Virtualenv
 
   desc "Serial-to-network bridge with a web UI"
   homepage "https://github.com/haliskilic/ser2netweb"
-  url "https://github.com/haliskilic/ser2netweb/archive/refs/tags/v3.1.0.tar.gz"
-  sha256 "1638340224391ec52566e254ecdb34d09ef89b32fe0983add6b5d6c1f7165a7e"
+  url "https://github.com/haliskilic/ser2netweb/archive/refs/tags/v3.1.1.tar.gz"
+  sha256 "22a4261d57b73fdd32c867e27473ea37d4b42485934f30351fff3e3818196f90"
   license "AGPL-3.0-only"
 
   livecheck do
@@ -136,7 +136,7 @@ class Ser2netweb < Formula
   end
 
   test do
-    assert_equal "ser2netweb 3.1.0", shell_output("#{bin}/ser2netweb --version").strip
+    assert_equal "ser2netweb 3.1.1", shell_output("#{bin}/ser2netweb --version").strip
     about = shell_output("#{bin}/ser2netweb --about")
     assert_match "Build: Homebrew formula", about
     refute_match(/not installed|failed to import/, about)
