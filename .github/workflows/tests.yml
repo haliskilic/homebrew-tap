@@ -35,7 +35,7 @@ jobs:
       # (and trusts it); no separate checkout
       - name: Set up Homebrew with this tap
         id: brew
-        uses: Homebrew/actions/setup-homebrew@c262868c096d909fc278daa87ed9772967331ea3  # 2026.11.02.1
+        uses: Homebrew/actions/setup-homebrew@61b401267256bb9c047d6d1481b176d5772a0ba7  # 2026.11.23.1
       - name: brew style
         env:
           TAP: ${{ steps.brew.outputs.tap-name }}
